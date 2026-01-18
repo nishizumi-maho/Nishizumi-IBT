@@ -1,4 +1,4 @@
-"""Bloops IBT Overlay
+"""Nishizumi IBT Overlay
 
 A single-file Tkinter overlay that compares live iRacing telemetry to a reference lap
 extracted from a local IBT file. Requires:
@@ -7,7 +7,7 @@ extracted from a local IBT file. Requires:
 - iRacing running with telemetry enabled
 - A local IBT file containing a clean reference lap
 
-Run: python bloops_ibt_overlay.py
+Run: python nishizumi_ibt_overlay.py
 """
 
 from __future__ import annotations
@@ -1081,13 +1081,13 @@ class MemoryLogHandler(logging.Handler):
         self.entries.append(msg)
 
 
-class BloopsApp:
+class NishizumiApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title(APP_TITLE)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        self.logger = logging.getLogger("bloops")
+        self.logger = logging.getLogger("nishizumi")
         self.logger.setLevel(logging.INFO)
         self.log_handler = MemoryLogHandler()
         self.log_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
@@ -1459,7 +1459,7 @@ class BloopsApp:
 
 def main() -> None:
     root = tk.Tk()
-    app = BloopsApp(root)
+    app = NishizumiApp(root)
     app._toggle_overlay()
     root.mainloop()
 
