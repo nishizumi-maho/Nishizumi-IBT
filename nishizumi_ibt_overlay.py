@@ -1121,6 +1121,7 @@ class NishizumiApp:
         self.last_live_lap_pct: Optional[float] = None
         self.live_unwrapped_m: Optional[float] = None
         self.last_track_len_m: Optional[float] = None
+        self.last_gear: Optional[int] = None
 
         self._build_ui()
         self.root.bind_all("<Control-Shift-O>", lambda _evt: self._toggle_overlay())
@@ -1145,6 +1146,7 @@ class NishizumiApp:
         self.audio_brake_var = tk.BooleanVar(value=True)
         self.audio_lift_var = tk.BooleanVar(value=False)
         self.audio_power_var = tk.BooleanVar(value=False)
+        self.audio_gear_beep_var = tk.BooleanVar(value=True)
         self.show_live_throttle_var = tk.BooleanVar(value=True)
         self.show_live_brake_var = tk.BooleanVar(value=True)
         self.show_ref_throttle_var = tk.BooleanVar(value=True)
@@ -1207,9 +1209,12 @@ class NishizumiApp:
         ttk.Checkbutton(audio_frame, text="Lift cues", variable=self.audio_lift_var).grid(row=0, column=1, sticky="w")
         ttk.Checkbutton(audio_frame, text="Power cues", variable=self.audio_power_var).grid(row=0, column=2, sticky="w")
         ttk.Checkbutton(audio_frame, text="Quiet mode", variable=self.quiet_mode_var).grid(row=0, column=3, sticky="w")
-        ttk.Label(audio_frame, text="Final cue offset (m):").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(audio_frame, text="Gear change beep", variable=self.audio_gear_beep_var).grid(
+            row=1, column=0, sticky="w", pady=(6, 0)
+        )
+        ttk.Label(audio_frame, text="Final cue offset (m):").grid(row=2, column=0, sticky="w", pady=(6, 0))
         ttk.Entry(audio_frame, textvariable=self.final_cue_offset_var, width=6).grid(
-            row=1, column=1, sticky="w", pady=(6, 0)
+            row=2, column=1, sticky="w", pady=(6, 0)
         )
         row += 1
 
@@ -1302,6 +1307,7 @@ class NishizumiApp:
             self.status_var.set("Waiting for iRacing telemetry...")
             self.last_live_lap_pct = None
             self.live_unwrapped_m = None
+            self.last_gear = None
             self._update_debug()
             self._schedule_next(update_ms)
             return
@@ -1310,6 +1316,7 @@ class NishizumiApp:
             self.status_var.set("Telemetry connected, waiting for data...")
             self.last_live_lap_pct = None
             self.live_unwrapped_m = None
+            self.last_gear = None
             self._update_debug()
             self._schedule_next(update_ms)
             return
@@ -1389,6 +1396,8 @@ class NishizumiApp:
         elif self.overlay:
             self.overlay.withdraw()
 
+        self._maybe_play_gear_beep(snapshot.gear)
+
         if self.reference:
             if track_len_display_m:
                 self.reference.set_event_distances(track_len_display_m)
@@ -1416,6 +1425,20 @@ class NishizumiApp:
 
         self._update_debug()
         self._schedule_next(update_ms)
+
+    def _maybe_play_gear_beep(self, gear: Optional[int]) -> None:
+        if not self.audio_gear_beep_var.get():
+            self.last_gear = gear
+            return
+        if gear is None:
+            self.last_gear = None
+            return
+        if self.last_gear is not None and gear != self.last_gear:
+            if winsound:
+                winsound.Beep(1100, 80)
+            else:
+                self.root.bell()
+        self.last_gear = gear
 
     def _next_brake_distance(self, lap_pct: float, track_len_m: Optional[float]) -> Optional[float]:
         if not self.reference or not self.reference.brake_points or not track_len_m:
