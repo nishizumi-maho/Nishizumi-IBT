@@ -34,9 +34,10 @@ except ImportError:  # pragma: no cover - Windows only
 
 APP_TITLE = "Nishizumi IBT"
 DEFAULT_UPDATE_MS = 50
-DEFAULT_APPROACH_A_M = 50.0
-DEFAULT_APPROACH_B_M = 25.0
+DEFAULT_APPROACH_A_S = 2.0
+DEFAULT_APPROACH_B_S = 1.0
 DEFAULT_FINAL_CUE_OFFSET_M = 0.0
+DEFAULT_APPROACH_SPEED_MPS = 25.0
 DEFAULT_BRAKE_THRESHOLD = 0.10
 DEFAULT_LIFT_THRESHOLD = 0.20
 DEFAULT_POWER_THRESHOLD = 0.70
@@ -393,13 +394,14 @@ class AudioCues:
         lap_pct: float,
         track_len_m: Optional[float],
         events: List[RefEvent],
-        approach_a_m: float,
-        approach_b_m: float,
+        approach_a_s: float,
+        approach_b_s: float,
         final_cue_offset_m: float,
         enable_brake: bool,
         enable_lift: bool,
         enable_power: bool,
         quiet_mode: bool,
+        speed_mps: Optional[float] = None,
     ) -> None:
         if lap_pct is None:
             return
@@ -413,6 +415,7 @@ class AudioCues:
             return
 
         if track_len_m and track_len_m > 1.0:
+            approach_a_m, approach_b_m = self._approach_distances(speed_mps, approach_a_s, approach_b_s)
             current_dist_m = lap_pct * track_len_m
             for idx, event in enumerate(events):
                 if event.dist_m is None:
@@ -488,6 +491,20 @@ class AudioCues:
                         force_c=True,
                     )
                 self._last_dist_to_event[idx] = delta_pct
+
+    def _approach_distances(
+        self,
+        speed_mps: Optional[float],
+        approach_a_s: float,
+        approach_b_s: float,
+    ) -> Tuple[float, float]:
+        """Translate approach timing into distance so beeps scale with speed."""
+        speed = speed_mps if speed_mps and speed_mps > 0 else DEFAULT_APPROACH_SPEED_MPS
+        approach_a_m = max(1.0, speed * approach_a_s)
+        approach_b_m = max(0.5, speed * approach_b_s)
+        if approach_b_m >= approach_a_m:
+            approach_b_m = max(0.5, approach_a_m * 0.5)
+        return approach_a_m, approach_b_m
 
     def _handle_stage(
         self,
@@ -1115,8 +1132,8 @@ class NishizumiApp:
         self.brake_threshold_var = tk.DoubleVar(value=DEFAULT_BRAKE_THRESHOLD)
         self.lift_threshold_var = tk.DoubleVar(value=DEFAULT_LIFT_THRESHOLD)
         self.power_threshold_var = tk.DoubleVar(value=DEFAULT_POWER_THRESHOLD)
-        self.approach_a_var = tk.DoubleVar(value=DEFAULT_APPROACH_A_M)
-        self.approach_b_var = tk.DoubleVar(value=DEFAULT_APPROACH_B_M)
+        self.approach_a_var = tk.DoubleVar(value=DEFAULT_APPROACH_A_S)
+        self.approach_b_var = tk.DoubleVar(value=DEFAULT_APPROACH_B_S)
         self.final_cue_offset_var = tk.DoubleVar(value=DEFAULT_FINAL_CUE_OFFSET_M)
         self.update_ms_var = tk.IntVar(value=DEFAULT_UPDATE_MS)
         self.quiet_mode_var = tk.BooleanVar(value=False)
@@ -1161,7 +1178,7 @@ class NishizumiApp:
         ttk.Entry(settings, textvariable=self.power_threshold_var, width=8).grid(row=row, column=1, sticky="w", pady=(6, 0))
         row += 1
 
-        ttk.Label(settings, text="Approach distances (m):").grid(row=row, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(settings, text="Approach times (s):").grid(row=row, column=0, sticky="w", pady=(6, 0))
         approach_frame = ttk.Frame(settings)
         approach_frame.grid(row=row, column=1, sticky="w", pady=(6, 0))
         ttk.Entry(approach_frame, textvariable=self.approach_a_var, width=6).grid(row=0, column=0)
@@ -1379,13 +1396,14 @@ class NishizumiApp:
                 lap_pct=lap_pct,
                 track_len_m=track_len_display_m,
                 events=self.reference.events,
-                approach_a_m=max(5.0, float(self.approach_a_var.get())),
-                approach_b_m=max(2.0, float(self.approach_b_var.get())),
+                approach_a_s=max(0.5, float(self.approach_a_var.get())),
+                approach_b_s=max(0.25, float(self.approach_b_var.get())),
                 final_cue_offset_m=max(0.0, float(self.final_cue_offset_var.get())),
                 enable_brake=self.audio_brake_var.get(),
                 enable_lift=self.audio_lift_var.get(),
                 enable_power=self.audio_power_var.get(),
                 quiet_mode=self.quiet_mode_var.get(),
+                speed_mps=snapshot.speed_mps,
             )
 
         next_brake = self._next_brake_distance(lap_pct, track_len_display_m)
