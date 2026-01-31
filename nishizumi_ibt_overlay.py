@@ -1269,43 +1269,43 @@ class NishizumiApp:
         )
         ttk.Label(audio_frame, text="Final cue offset (m):").grid(row=2, column=0, sticky="w", pady=(6, 0))
         ttk.Entry(audio_frame, textvariable=self.final_cue_offset_var, width=6).grid(
-            row=2, column=1, sticky=\"w\", pady=(6, 0)
+            row=2, column=1, sticky="w", pady=(6, 0)
         )
         row += 1
 
-        lines_frame = ttk.LabelFrame(settings, text=\"Visible Lines\", padding=8)
-        lines_frame.grid(row=row, column=0, columnspan=3, sticky=\"ew\", pady=(8, 0))
+        lines_frame = ttk.LabelFrame(settings, text="Visible Lines", padding=8)
+        lines_frame.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(8, 0))
 
-        ttk.Label(lines_frame, text=\"Live:\").grid(row=0, column=0, sticky=\"w\", padx=(0, 10))
-        ttk.Checkbutton(lines_frame, text=\"Throttle\", variable=self.show_live_throttle_var).grid(
-            row=0, column=1, sticky=\"w\"
+        ttk.Label(lines_frame, text="Live:").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Checkbutton(lines_frame, text="Throttle", variable=self.show_live_throttle_var).grid(
+            row=0, column=1, sticky="w"
         )
-        ttk.Checkbutton(lines_frame, text=\"Brake\", variable=self.show_live_brake_var).grid(
-            row=0, column=2, sticky=\"w\"
+        ttk.Checkbutton(lines_frame, text="Brake", variable=self.show_live_brake_var).grid(
+            row=0, column=2, sticky="w"
         )
 
-        ttk.Label(lines_frame, text=\"Reference:\").grid(row=1, column=0, sticky=\"w\", pady=(6, 0), padx=(0, 10))
-        ttk.Checkbutton(lines_frame, text=\"Throttle\", variable=self.show_ref_throttle_var).grid(
-            row=1, column=1, sticky=\"w\", pady=(6, 0)
+        ttk.Label(lines_frame, text="Reference:").grid(row=1, column=0, sticky="w", pady=(6, 0), padx=(0, 10))
+        ttk.Checkbutton(lines_frame, text="Throttle", variable=self.show_ref_throttle_var).grid(
+            row=1, column=1, sticky="w", pady=(6, 0)
         )
-        ttk.Checkbutton(lines_frame, text=\"Brake\", variable=self.show_ref_brake_var).grid(
-            row=1, column=2, sticky=\"w\", pady=(6, 0)
+        ttk.Checkbutton(lines_frame, text="Brake", variable=self.show_ref_brake_var).grid(
+            row=1, column=2, sticky="w", pady=(6, 0)
         )
 
         row += 1
 
-        ttk.Label(settings, textvariable=self.status_var, foreground=\"#6b6b6b\").grid(
-            row=row, column=0, columnspan=3, sticky=\"w\", pady=(12, 0)
+        ttk.Label(settings, textvariable=self.status_var, foreground="#6b6b6b").grid(
+            row=row, column=0, columnspan=3, sticky="w", pady=(12, 0)
         )
 
         settings.columnconfigure(1, weight=1)
 
-        self.debug_text = scrolledtext.ScrolledText(debug, height=16, width=80, state=\"disabled\")
+        self.debug_text = scrolledtext.ScrolledText(debug, height=16, width=80, state="disabled")
         self.debug_text.pack(fill=tk.BOTH, expand=True)
 
     def _browse_ibt(self) -> None:
         path = filedialog.askopenfilename(
-            title=\"Select IBT file\", filetypes=[(\"IBT Files\", \"*.ibt\"), (\"All Files\", \"*\")]
+            title="Select IBT file", filetypes=[("IBT Files", "*.ibt"), ("All Files", "*")]
         )
         if not path:
             return
@@ -1320,12 +1320,12 @@ class NishizumiApp:
                 lift_threshold=self.lift_threshold_var.get(),
                 power_threshold=self.power_threshold_var.get(),
             )
-            self.logger.info(\"Loaded reference IBT: %s\", path)
+            self.logger.info("Loaded reference IBT: %s", path)
         except Exception as exc:
-            messagebox.showerror(\"Failed to load IBT\", str(exc))
+            messagebox.showerror("Failed to load IBT", str(exc))
             self.reference = None
             return
-        self.status_var.set(\"Reference loaded. Connect to iRacing for live sync.\")
+        self.status_var.set("Reference loaded. Connect to iRacing for live sync.")
 
     def _toggle_overlay(self, force_hide: bool = False) -> None:
         if force_hide or not self.overlay_enabled_var.get():
@@ -1365,7 +1365,7 @@ class NishizumiApp:
             )
 
         if not snapshot.connected:
-            self.status_var.set(\"Waiting for iRacing telemetry...\")
+            self.status_var.set("Waiting for iRacing telemetry...")
             self.last_live_lap_pct = None
             self.live_unwrapped_m = None
             self.last_gear = None
@@ -1374,7 +1374,7 @@ class NishizumiApp:
             return
 
         if snapshot.lap_pct is None:
-            self.status_var.set(\"Telemetry connected, waiting for data...\")
+            self.status_var.set("Telemetry connected, waiting for data...")
             self.last_live_lap_pct = None
             self.live_unwrapped_m = None
             self.last_gear = None
@@ -1399,7 +1399,7 @@ class NishizumiApp:
             )
 
         speed_delta_kph = None
-        gear_hint = \"\"
+        gear_hint = ""
         ref_speed_mps = None
         ref_throttle = None
         ref_brake = None
@@ -1411,7 +1411,7 @@ class NishizumiApp:
             ref_brake = self.reference.ref_at_pct(self.reference.brake, lap_pct)
             ref_gear = self.reference.ref_gear_at_pct(lap_pct)
             if snapshot.gear is not None:
-                gear_hint = \"match\" if snapshot.gear == ref_gear else \"mismatch\"
+                gear_hint = "match" if snapshot.gear == ref_gear else "mismatch"
 
         track_len_m = snapshot.track_length_km * 1000.0 if snapshot.track_length_km else None
         if track_len_m:
@@ -1425,13 +1425,13 @@ class NishizumiApp:
         if live_unwrapped_m is not None:
             self.samples.append(
                 {
-                    \"t\": now,
-                    \"throttle\": throttle,
-                    \"brake\": brake,
-                    \"speed\": speed_kph,
-                    \"ref_throttle\": ref_throttle,
-                    \"ref_brake\": ref_brake,
-                    \"ref_speed\": (ref_speed_mps or 0.0) * 3.6 if ref_speed_mps is not None else None,
+                    "t": now,
+                    "throttle": throttle,
+                    "brake": brake,
+                    "speed": speed_kph,
+                    "ref_throttle": ref_throttle,
+                    "ref_brake": ref_brake,
+                    "ref_speed": (ref_speed_mps or 0.0) * 3.6 if ref_speed_mps is not None else None,
                 }
             )
 
@@ -1479,11 +1479,11 @@ class NishizumiApp:
             )
 
         next_brake = self._next_brake_distance(lap_pct, track_len_display_m)
-        next_brake_text = f\"Next brake {next_brake:.0f}m\" if next_brake is not None else \"Next brake --\"
-        track_label = snapshot.track_name or \"Unknown track\"
-        track_len_label = f\"{track_len_display_m:.0f}m\" if track_len_display_m else \"--\"
+        next_brake_text = f"Next brake {next_brake:.0f}m" if next_brake is not None else "Next brake --"
+        track_label = snapshot.track_name or "Unknown track"
+        track_len_label = f"{track_len_display_m:.0f}m" if track_len_display_m else "--"
         self.status_var.set(
-            f\"Telemetry connected | {track_label} ({track_len_label}) | {next_brake_text}\"
+            f"Telemetry connected | {track_label} ({track_len_label}) | {next_brake_text}"
         )
 
         self._update_debug()
@@ -1514,18 +1514,18 @@ class NishizumiApp:
         return distance_to
 
     def _update_debug(self) -> None:
-        self.debug_text.configure(state=\"normal\")
-        self.debug_text.delete(\"1.0\", tk.END)
+        self.debug_text.configure(state="normal")
+        self.debug_text.delete("1.0", tk.END)
         for entry in self.log_handler.entries:
-            self.debug_text.insert(tk.END, entry + \"\\n\")
-        self.debug_text.configure(state=\"disabled\")
+            self.debug_text.insert(tk.END, entry + "\\n")
+        self.debug_text.configure(state="disabled")
 
     def _update_live_unwrapped(
         self,
         lap_pct: float,
         track_len_m: float,
     ) -> Optional[float]:
-        \"\"\"FIXED: Simplified position tracking - trust iRacing's lap_pct\"\"\"
+        """FIXED: Simplified position tracking - trust iRacing's lap_pct"""
         if track_len_m <= 0:
             return None
 
@@ -1576,5 +1576,5 @@ def main() -> None:
     root.mainloop()
 
 
-if __name__ == \"__main__\":
+if __name__ == "__main__":
     main()
