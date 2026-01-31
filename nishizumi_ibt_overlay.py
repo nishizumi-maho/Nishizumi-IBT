@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover - Windows only
 
 
 APP_TITLE = "Nishizumi IBT"
-DEFAULT_UPDATE_MS = 50
+DEFAULT_UPDATE_MS = 16  # 60 FPS target
 DEFAULT_APPROACH_A_S = 2.0
 DEFAULT_APPROACH_B_S = 1.0
 DEFAULT_FINAL_CUE_OFFSET_M = 0.0
@@ -74,7 +74,6 @@ ASSUMED_TRACK_LEN_M = 5000.0
 
 def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
-
 
 
 @dataclass
@@ -284,7 +283,8 @@ class TelemetryWorker(threading.Thread):
                     track_name=track_name,
                 )
                 self._set_snapshot(snapshot)
-                time.sleep(0.02)
+                # High frequency polling for smooth overlays
+                time.sleep(0.008)
             except Exception as exc:
                 self._logger.warning("Telemetry worker error: %s", exc)
                 self._set_snapshot(TelemetrySnapshot(connected=False, timestamp=time.time()))
@@ -608,14 +608,26 @@ class OverlayWindow(tk.Toplevel):
         self.attributes("-alpha", DEFAULT_ALPHA)
         self.overrideredirect(True)
         self._drag_start = None
+        self._resize_mode = False
 
         self.canvas = tk.Canvas(self, bg="#0b0b0b", highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
         self.canvas.bind("<ButtonPress-1>", self._start_drag)
         self.canvas.bind("<B1-Motion>", self._on_drag)
+        
+    def toggle_resize_mode(self, enabled: bool) -> None:
+        self._resize_mode = enabled
+        self.overrideredirect(not enabled)
+        # Re-apply attributes that might get reset by overrideredirect change
+        self.attributes("-topmost", True)
+        self.attributes("-alpha", DEFAULT_ALPHA)
 
     def set_size(self, width: int, height: int) -> None:
+        # Only force size if not in native resize mode
+        if self._resize_mode:
+            return
+            
         size, _, position = self.geometry().partition("+")
         x_str, _, y_str = position.partition("+")
         x = int(x_str) if x_str else 100
@@ -623,10 +635,13 @@ class OverlayWindow(tk.Toplevel):
         self.geometry(f"{width}x{height}+{x}+{y}")
 
     def _start_drag(self, event: tk.Event) -> None:
+        # Disable dragging when in native resize mode (let window manager handle it)
+        if self._resize_mode:
+            return
         self._drag_start = (event.x_root, event.y_root)
 
     def _on_drag(self, event: tk.Event) -> None:
-        if not self._drag_start:
+        if self._resize_mode or not self._drag_start:
             return
         x_root, y_root = self._drag_start
         dx = event.x_root - x_root
@@ -645,8 +660,8 @@ class OverlayWindow(tk.Toplevel):
         ref: Optional[ReferenceLap],
         samples: Deque[Dict[str, Optional[float]]],
         flow_window_s: float,
-        speed_delta_kph: Optional[float],
-        steering_deg: Optional[float],
+        lookahead_window_s: float,
+        speed_delta_kph: Optional[float],\n        steering_deg: Optional[float],
         gear: Optional[int],
         gear_hint: str,
         lap_pct: Optional[float],
@@ -673,6 +688,7 @@ class OverlayWindow(tk.Toplevel):
                 flow_bottom,
                 samples,
                 flow_window_s,
+                lookahead_window_s,
                 ref is not None,
                 show_live_throttle,
                 show_live_brake,
@@ -688,6 +704,7 @@ class OverlayWindow(tk.Toplevel):
                     lap_pct,
                     track_len_m,
                     flow_window_s,
+                    lookahead_window_s,
                     show_ref_throttle,
                     show_ref_brake,
                 )
@@ -729,8 +746,7 @@ class OverlayWindow(tk.Toplevel):
         origin_x: int,
         top: int,
         right_x: float,
-        bottom: int,
-        height: int,
+        bottom: int,\n        height: int,
     ) -> None:
         """Draw a subtle professional grid background."""
         # Horizontal grid lines (0%, 25%, 50%, 75%, 100%)
@@ -850,8 +866,7 @@ class OverlayWindow(tk.Toplevel):
             fill=color,
             width=base_width,
             capstyle=tk.ROUND,
-            joinstyle=tk.ROUND,
-            smooth=smooth,
+            joinstyle=tk.ROUND,\n            smooth=smooth,
             splinesteps=12,
         )
 
@@ -875,6 +890,7 @@ class OverlayWindow(tk.Toplevel):
         bottom: int,
         samples: Deque[Dict[str, Optional[float]]],
         flow_window_s: float,
+        lookahead_window_s: float,
         show_reference: bool,
         show_live_throttle: bool = True,
         show_live_brake: bool = True,
@@ -894,7 +910,7 @@ class OverlayWindow(tk.Toplevel):
         flow_width = max(40, width - 40)
         height = max(40, bottom - top)
 
-        history_ratio = flow_window_s / (flow_window_s + DEFAULT_LOOKAHEAD_WINDOW_S)
+        history_ratio = flow_window_s / (flow_window_s + lookahead_window_s)
         split_x = origin_x + (flow_width * history_ratio)
 
         # Draw professional grid background
@@ -983,15 +999,16 @@ class OverlayWindow(tk.Toplevel):
         lap_pct: float,
         track_len_m: float,
         flow_window_s: float,
+        lookahead_window_s: float,
         show_ref_throttle: bool = True,
         show_ref_brake: bool = True,
     ) -> None:
-        """Draw the lookahead preview (next 2 seconds of IBT reference) with professional styling."""
+        """Draw the lookahead preview (next N seconds of IBT reference) with professional styling."""
         origin_x = 20
         flow_width = max(40, width - 40)
         height = max(40, bottom - top)
 
-        history_ratio = flow_window_s / (flow_window_s + DEFAULT_LOOKAHEAD_WINDOW_S)
+        history_ratio = flow_window_s / (flow_window_s + lookahead_window_s)
         split_x = origin_x + (flow_width * history_ratio)
         preview_width = flow_width * (1 - history_ratio)
         right_x = origin_x + flow_width
@@ -1007,7 +1024,7 @@ class OverlayWindow(tk.Toplevel):
         if current_speed < 1:
             current_speed = 50
 
-        lookahead_distance = current_speed * DEFAULT_LOOKAHEAD_WINDOW_S
+        lookahead_distance = current_speed * lookahead_window_s
 
         throttle_points: List[float] = []
         brake_points: List[float] = []
@@ -1140,6 +1157,8 @@ class NishizumiApp:
         self.quiet_mode_var = tk.BooleanVar(value=False)
         self.overlay_width_var = tk.IntVar(value=DEFAULT_OVERLAY_WIDTH)
         self.overlay_height_var = tk.IntVar(value=DEFAULT_OVERLAY_HEIGHT)
+        self.lookahead_window_var = tk.DoubleVar(value=DEFAULT_LOOKAHEAD_WINDOW_S)
+        self.overlay_locked_var = tk.BooleanVar(value=True)
 
         self.overlay_enabled_var = tk.BooleanVar(value=True)
 
@@ -1197,9 +1216,16 @@ class NishizumiApp:
         ttk.Entry(size_frame, textvariable=self.overlay_width_var, width=6).grid(row=0, column=0)
         ttk.Entry(size_frame, textvariable=self.overlay_height_var, width=6).grid(row=0, column=1, padx=6)
         row += 1
+        
+        ttk.Label(settings, text="Lookahead (s):").grid(row=row, column=0, sticky="w", pady=(6, 0))
+        ttk.Entry(settings, textvariable=self.lookahead_window_var, width=8).grid(row=row, column=1, sticky="w", pady=(6, 0))
+        row += 1
 
         ttk.Checkbutton(settings, text="Enable overlay", variable=self.overlay_enabled_var, command=self._toggle_overlay).grid(
             row=row, column=0, sticky="w", pady=(8, 0)
+        )
+        ttk.Checkbutton(settings, text="Lock Overlay (No Resize)", variable=self.overlay_locked_var, command=self._toggle_overlay_lock).grid(
+            row=row, column=1, sticky="w", pady=(8, 0)
         )
         row += 1
 
@@ -1280,7 +1306,13 @@ class NishizumiApp:
             self._ensure_overlay()
             if self.overlay:
                 self._apply_overlay_size()
+                self._toggle_overlay_lock() # Apply current lock state
                 self.overlay.deiconify()
+                
+    def _toggle_overlay_lock(self) -> None:
+        if self.overlay:
+            is_locked = self.overlay_locked_var.get()
+            self.overlay.toggle_resize_mode(not is_locked)
 
     def _ensure_overlay(self) -> None:
         if not self.overlay:
@@ -1288,7 +1320,7 @@ class NishizumiApp:
             self.overlay.withdraw()
 
     def _update(self) -> None:
-        update_ms = max(20, int(self.update_ms_var.get()))
+        update_ms = max(5, int(self.update_ms_var.get()))
         snapshot = self.worker.get_snapshot()
         now = time.time()
 
@@ -1380,6 +1412,7 @@ class NishizumiApp:
                 ref=self.reference,
                 samples=self.samples,
                 flow_window_s=DEFAULT_FLOW_WINDOW_S,
+                lookahead_window_s=self.lookahead_window_var.get(),
                 speed_delta_kph=speed_delta_kph,
                 steering_deg=steering_deg,
                 gear=snapshot.gear,
@@ -1486,6 +1519,12 @@ class NishizumiApp:
         self.root.after(update_ms, self._update)
 
     def _apply_overlay_size(self) -> None:
+        if self.overlay and self.overlay._resize_mode:
+            # Update width vars from actual window size when in resize mode
+            self.overlay_width_var.set(self.overlay.winfo_width())
+            self.overlay_height_var.set(self.overlay.winfo_height())
+            return
+            
         width = max(200, int(self.overlay_width_var.get()))
         height = max(160, int(self.overlay_height_var.get()))
         if self.overlay:
