@@ -1267,7 +1267,9 @@ class NishizumiApp:
         ttk.Checkbutton(audio_frame, text="Gear change beep", variable=self.audio_gear_beep_var).grid(
             row=1, column=0, sticky="w", pady=(6, 0)
         )
-        ttk.Label(audio_frame, text="Final cue offset (m):").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(audio_frame, text="Final cue offset (m):").grid(
+            row=2, column=0, sticky="w", pady=(6, 0)
+        )
         ttk.Entry(audio_frame, textvariable=self.final_cue_offset_var, width=6).grid(
             row=2, column=1, sticky="w", pady=(6, 0)
         )
