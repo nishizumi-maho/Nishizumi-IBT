@@ -617,9 +617,14 @@ class OverlayWindow(tk.Toplevel):
         self.canvas.bind("<B1-Motion>", self._on_drag)
         
     def toggle_resize_mode(self, enabled: bool) -> None:
+        """enabled=True -> native window frame and resize handles; enabled=False -> frameless locked overlay."""
         self._resize_mode = enabled
+
+        # When enabled, let the OS draw a normal resizable window border.
         self.overrideredirect(not enabled)
-        # Re-apply attributes that might get reset by overrideredirect change
+        self.resizable(enabled, enabled)
+
+        # Re-apply attributes that might get reset by overrideredirect changes.
         self.attributes("-topmost", True)
         self.attributes("-alpha", DEFAULT_ALPHA)
 
@@ -661,12 +666,14 @@ class OverlayWindow(tk.Toplevel):
         samples: Deque[Dict[str, Optional[float]]],
         flow_window_s: float,
         lookahead_window_s: float,
-        speed_delta_kph: Optional[float],\n        steering_deg: Optional[float],
+        speed_delta_kph: Optional[float],
+        steering_deg: Optional[float],
         gear: Optional[int],
         gear_hint: str,
         lap_pct: Optional[float],
         track_len_m: Optional[float],
         lookahead_m: float,
+        ref_lead_s: float = 0.0,
         show_live_throttle: bool = True,
         show_live_brake: bool = True,
         show_ref_throttle: bool = True,
@@ -694,6 +701,7 @@ class OverlayWindow(tk.Toplevel):
                 show_live_brake,
                 show_ref_throttle,
                 show_ref_brake,
+                ref_lead_s=ref_lead_s,
             )
             if ref is not None and lap_pct is not None and track_len_m is not None:
                 self._draw_lookahead_preview(
@@ -746,7 +754,8 @@ class OverlayWindow(tk.Toplevel):
         origin_x: int,
         top: int,
         right_x: float,
-        bottom: int,\n        height: int,
+        bottom: int,
+        height: int,
     ) -> None:
         """Draw a subtle professional grid background."""
         # Horizontal grid lines (0%, 25%, 50%, 75%, 100%)
@@ -780,8 +789,12 @@ class OverlayWindow(tk.Toplevel):
         cutoff: float,
         flow_window_s: float,
         split_x: float,
+        series_offset_s: float = 0.0,
     ) -> List[List[float]]:
-        """Build point sequences for a data series, splitting on None values."""
+        """Build point sequences for a data series, splitting on None values.
+
+        series_offset_s lets us visually lead/lag this series in time (seconds).
+        """
         segments: List[List[float]] = []
         current_points: List[float] = []
 
@@ -795,7 +808,9 @@ class OverlayWindow(tk.Toplevel):
             t = sample["t"]
             if t is None:
                 continue
-            x = origin_x + ((t - cutoff) / flow_window_s) * (split_x - origin_x)
+            # Apply per-series horizontal offset: positive = draw earlier (to the left)
+            effective_t = t - series_offset_s
+            x = origin_x + ((effective_t - cutoff) / flow_window_s) * (split_x - origin_x)
             normalized = clamp(value, 0.0, 1.0)
             y = bottom - normalized * height
             current_points.extend([x, y])
@@ -866,7 +881,8 @@ class OverlayWindow(tk.Toplevel):
             fill=color,
             width=base_width,
             capstyle=tk.ROUND,
-            joinstyle=tk.ROUND,\n            smooth=smooth,
+            joinstyle=tk.ROUND,
+            smooth=smooth,
             splinesteps=12,
         )
 
@@ -896,6 +912,7 @@ class OverlayWindow(tk.Toplevel):
         show_live_brake: bool = True,
         show_ref_throttle: bool = True,
         show_ref_brake: bool = True,
+        ref_lead_s: float = 0.0,
     ) -> None:
         if not samples:
             return
@@ -928,7 +945,8 @@ class OverlayWindow(tk.Toplevel):
             if show_ref_throttle:
                 segments = self._build_line_points(
                     window, "ref_throttle", origin_x, bottom, height,
-                    cutoff, flow_window_s, split_x
+                    cutoff, flow_window_s, split_x,
+                    series_offset_s=ref_lead_s,
                 )
                 for points in segments:
                     self.canvas.create_line(
@@ -945,7 +963,8 @@ class OverlayWindow(tk.Toplevel):
             if show_ref_brake:
                 segments = self._build_line_points(
                     window, "ref_brake", origin_x, bottom, height,
-                    cutoff, flow_window_s, split_x
+                    cutoff, flow_window_s, split_x,
+                    series_offset_s=ref_lead_s,
                 )
                 for points in segments:
                     self.canvas.create_line(
@@ -963,7 +982,7 @@ class OverlayWindow(tk.Toplevel):
         if show_live_throttle:
             segments = self._build_line_points(
                 window, "throttle", origin_x, bottom, height,
-                cutoff, flow_window_s, split_x
+                cutoff, flow_window_s, split_x,
             )
             for points in segments:
                 # Draw glowing line (no fill)
@@ -978,7 +997,7 @@ class OverlayWindow(tk.Toplevel):
         if show_live_brake:
             segments = self._build_line_points(
                 window, "brake", origin_x, bottom, height,
-                cutoff, flow_window_s, split_x
+                cutoff, flow_window_s, split_x,
             )
             for points in segments:
                 # Draw glowing line (no fill)
@@ -1160,6 +1179,9 @@ class NishizumiApp:
         self.lookahead_window_var = tk.DoubleVar(value=DEFAULT_LOOKAHEAD_WINDOW_S)
         self.overlay_locked_var = tk.BooleanVar(value=True)
 
+        # New: reference lead time (seconds) to show reference traces earlier
+        self.ref_lead_s_var = tk.DoubleVar(value=0.0)
+
         self.overlay_enabled_var = tk.BooleanVar(value=True)
 
         self.audio_brake_var = tk.BooleanVar(value=True)
@@ -1219,6 +1241,13 @@ class NishizumiApp:
         
         ttk.Label(settings, text="Lookahead (s):").grid(row=row, column=0, sticky="w", pady=(6, 0))
         ttk.Entry(settings, textvariable=self.lookahead_window_var, width=8).grid(row=row, column=1, sticky="w", pady=(6, 0))
+        row += 1
+
+        # New: reference lead control
+        ttk.Label(settings, text="Reference lead (s):").grid(row=row, column=0, sticky="w", pady=(6, 0))
+        ttk.Entry(settings, textvariable=self.ref_lead_s_var, width=8).grid(
+            row=row, column=1, sticky="w", pady=(6, 0)
+        )
         row += 1
 
         ttk.Checkbutton(settings, text="Enable overlay", variable=self.overlay_enabled_var, command=self._toggle_overlay).grid(
@@ -1420,6 +1449,7 @@ class NishizumiApp:
                 lap_pct=lap_pct,
                 track_len_m=track_len_display_m,
                 lookahead_m=lookahead_m,
+                ref_lead_s=float(self.ref_lead_s_var.get()),
                 show_live_throttle=self.show_live_throttle_var.get(),
                 show_live_brake=self.show_live_brake_var.get(),
                 show_ref_throttle=self.show_ref_throttle_var.get(),
@@ -1520,9 +1550,11 @@ class NishizumiApp:
 
     def _apply_overlay_size(self) -> None:
         if self.overlay and self.overlay._resize_mode:
-            # Update width vars from actual window size when in resize mode
-            self.overlay_width_var.set(self.overlay.winfo_width())
-            self.overlay_height_var.set(self.overlay.winfo_height())
+            # User is resizing with OS handles; mirror that into the entry fields.
+            width = max(1, self.overlay.winfo_width())
+            height = max(1, self.overlay.winfo_height())
+            self.overlay_width_var.set(width)
+            self.overlay_height_var.set(height)
             return
             
         width = max(200, int(self.overlay_width_var.get()))
